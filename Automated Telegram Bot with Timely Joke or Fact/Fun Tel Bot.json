@@ -1,0 +1,167 @@
+{
+  "name": "Fun Tel Bot",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 10
+            },
+            {
+              "triggerAtHour": 22
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "b9baff83-db47-4ee5-9332-eea741b708ab",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = new Date();\nconst hour = now.getHours();\n\nlet promptText = \"\";\nlet icon = \"\";\n\n// Check if it's the morning run (before noon)\nif (hour < 12) {\n    icon = \"*Daily DSA Knowledge*\";\n    promptText = \"You are a Senior Software Engineer. Explain one specific, advanced concept related to Data Structures, Algorithms, or System Design. Include a brief 'Why it matters' section. Keep it under 100 words.\";\n} else {\n    // Evening run (10 PM)\n    icon = \"*Nightly Joke*\";\n    promptText = \"Tell me a random, witty, and intelligent joke related to programming or tech. Keep it short.\";\n}\n\nreturn {\n    prompt: promptText,\n    header: icon\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "d91be3b9-a42d-47f6-b7b3-a8d41c6b027f",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "chatId": "-5200519486",
+        "text": "={{ $json.originalHeader }}\n\n{{ $json.cleanedMessage }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1024,
+        0
+      ],
+      "id": "d86c3e3f-ca0c-4600-83c6-71511f049713",
+      "name": "Send a text message",
+      "webhookId": "52b161ab-6306-4800-8ca0-0287aadc64e3",
+      "credentials": {
+        "telegramApi": {
+          "id": "Q1Nmmqr9E6GnW9vl",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={\n  \"contents\": [{\n    \"parts\": [{\n      \"text\": \"={{ $('Code').item.json.prompt }}\"\n    }]\n  }]\n}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        0
+      ],
+      "id": "0d6a3a7f-3f60-4e29-8dae-a5f0a776b4d9",
+      "name": "Message a model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "gLZTCPkDxlrtEqJJ",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the output from the HTTP Request\nconst response = $input.first().json;\nlet aiText = \"\";\n\n// 1. Try to find the text in standard Gemini location\nif (response.candidates && response.candidates[0]?.content?.parts?.[0]?.text) {\n    aiText = response.candidates[0].content.parts[0].text;\n} \n// 2. Try to find it in the structure you are seeing (content -> parts)\nelse if (response.content && response.content.parts?.[0]?.text) {\n    aiText = response.content.parts[0].text;\n} \nelse {\n    aiText = \"Could not parse AI response. Check input.\";\n}\n\n// 3. Fix \"JSON String\" issue\n// Sometimes AI returns a JSON string (like '{\"contents\": ...}') instead of just the text.\n// We parse it to get the actual message inside.\ntry {\n    const trimmed = aiText.trim();\n    if (trimmed.startsWith('{') && trimmed.includes('\"parts\"')) {\n        const parsed = JSON.parse(trimmed);\n        if (parsed.contents && parsed.contents[0].parts[0].text) {\n            aiText = parsed.contents[0].parts[0].text;\n        }\n    }\n} catch (e) {\n    // If parsing fails, it was probably just regular text that started with {\n}\n\nreturn {\n    json: {\n        cleanedMessage: aiText,\n        originalHeader: $('Code').first().json.header // Pass the header through\n    }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        0
+      ],
+      "id": "25b7f3be-a839-465b-a91c-78ce9da6479e",
+      "name": "msgCleaner"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "msgCleaner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "msgCleaner": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "5b88d844-acc0-4546-b685-f0c79014d66d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f6f0bd803387f2a7972cf0c3d75876dae047a116b75ef2cb2a096488c78b2734"
+  },
+  "id": "OmQG4SomCfNsto_a29Ogi",
+  "tags": []
+}
